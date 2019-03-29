@@ -1,4 +1,7 @@
-const c = @import("c.zig");
+const c = @cImport({
+    @cInclude("math.h");
+});
+
 const assert = @import("std").debug.assert;
 
 pub const Mat4x4 = struct {

@@ -1,7 +1,8 @@
 const Builder = @import("std").build.Builder;
 const builtin = @import("builtin");
+const ultibo = @import("buildultibo.zig");
 
-pub fn build(b: *Builder) void {
+pub fn build(b: *Builder) !void {
     const mode = b.standardReleaseOptions();
     const windows = b.option(bool, "windows", "create windows build") orelse false;
 
@@ -26,4 +27,6 @@ pub fn build(b: *Builder) void {
     const play = b.step("play", "Play the game");
     const run = exe.run();
     play.dependOn(&run.step);
+
+    try ultibo.build(b);
 }

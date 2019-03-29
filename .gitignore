@@ -1,2 +1,7 @@
-zig-cache/
+*.elf
+*.img
+*.log
+*.o
+ultibomainzig.h
 tetris
+zig-cache/
