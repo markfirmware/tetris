@@ -1145,6 +1145,7 @@ function serial_available: BOOL; stdcall; public name 'serial_available';
 function serial_open(baudrate, databits, stopbits, parity, flowcontrol, receivedepth, transmitdepth: uint32_t): uint32_t; stdcall; public name 'serial_open';
 function serial_close: uint32_t; stdcall; public name 'serial_close';
 
+function serial_read_peek(buffer: PVOID; size: uint32_t; var count: uint32_t): uint32_t; stdcall; public name 'serial_read_peek';
 function serial_read(buffer: PVOID; size: uint32_t; var count: uint32_t): uint32_t; stdcall; public name 'serial_read';
 function serial_write(buffer: PVOID; size: uint32_t; var count: uint32_t): uint32_t; stdcall; public name 'serial_write';
 
@@ -9111,6 +9112,12 @@ begin
 end;
 
 {==============================================================================}
+
+function serial_read_peek(buffer: PVOID; size: uint32_t; var count: uint32_t): uint32_t; stdcall;
+begin
+ count:=0;
+ Result:=SerialDeviceRead(SerialDeviceGetDefault,buffer,size,SERIAL_READ_PEEK_BUFFER,count);
+end;
 
 function serial_read(buffer: PVOID; size: uint32_t; var count: uint32_t): uint32_t; stdcall;
 {Read data from the default Serial device}
@@ -34856,6 +34863,21 @@ end;
 {$ENDIF}
 {==============================================================================}
 {==============================================================================}
+
+function cosf(x: double_t): double_t; stdcall; public name 'cosf';
+begin
+ result:=cos(x);
+end;
+
+function sinf(x: double_t): double_t; stdcall; public name 'sinf';
+begin
+ result:=sin(x);
+end;
+
+function sqrtf(x: double_t): double_t; stdcall; public name 'sqrtf';
+begin
+ result:=sqrt(x);
+end;
 
 initialization
  APIInit;

@@ -673,6 +673,7 @@ uint32_t STDCALL serial_open(uint32_t baudrate, uint32_t databits, uint32_t stop
 uint32_t STDCALL serial_close(void);
 
 uint32_t STDCALL serial_read(void *buffer, uint32_t size, uint32_t *count);
+uint32_t STDCALL serial_read_peek(void *buffer, uint32_t size, uint32_t *count);
 uint32_t STDCALL serial_write(void *buffer, uint32_t size, uint32_t *count);
 
 /* ============================================================================== */
@@ -854,6 +855,11 @@ void STDCALL millisecond_delay_ex(uint32_t milliseconds, BOOL wait);
 /* RTL Functions */
 uint32_t get_tick_count(void);
 uint64_t get_tick_count64(void);
+
+uint32_t STDCALL console_device_get_default();
+uint32_t STDCALL graphics_window_create(uint32_t device_handle, uint32_t position);
+uint32_t STDCALL graphics_window_clear(uint32_t window_handle);
+uint32_t STDCALL graphics_window_draw_block(uint32_t window_handle, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
 
 #ifdef __cplusplus
 }
