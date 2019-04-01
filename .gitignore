@@ -2,6 +2,8 @@
 *.img
 *.log
 *.o
+*.zip
 ultibomainzig.h
 tetris
+release/
 zig-cache/

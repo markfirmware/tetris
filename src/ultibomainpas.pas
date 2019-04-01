@@ -11,7 +11,7 @@ uses
  UltiboUtils,Logging,GlobalConfig,SysUtils,Console,
  DwcOtg,Keyboard,GraphicsConsole,Math;
  
-{$link ultibomainzig.o}
+{$link zig-cache\ultibomainzig.o}
 function mainzig(argc: int; argv: PPChar): int; cdecl; external name 'mainzig';
 
 procedure StartLogging;

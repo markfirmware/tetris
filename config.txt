@@ -1,0 +1,17 @@
+[pi0]
+kernel=kernel-rpi.img
+
+[pi0w]
+kernel=kernel-rpi.img
+
+[pi1]
+kernel=kernel-rpi.img
+
+[pi2]
+kernel=kernel-rpi2.img
+
+[pi3]
+kernel=kernel-rpi3.img
+
+[pi3+]
+kernel=kernel-rpi3.img

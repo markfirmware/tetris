@@ -123,7 +123,7 @@ fn drawFallingBlock(t: *Tetris, p: Particle) void {
 
     const mvp = t.projection.mult(model);
 
-    t.fillRectMvp(t.callback_user_pointer, t, p.color, mvp);
+//  t.fillRectMvp(t.callback_user_pointer, t, p.color, mvp);
 }
 
 fn fillRect(t: *Tetris, color: Vec4, x: f32, y: f32, w: f32, h: f32) void {

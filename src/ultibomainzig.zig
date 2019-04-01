@@ -107,6 +107,19 @@ fn pollKeyboard(t: *Tetris) void {
     var key: u8 = undefined;
     if (ultibo.console_peek_key(&key, null)) {
         if (ultibo.console_get_key(&key, null)) {
+            if (key == 0) {
+                _ = ultibo.console_get_key(&key, null);
+                switch (key) {
+                    75 => key = 'a',
+                    77 => key = 's',
+                    72 => key = 'w',
+                    80 => key = 'z',
+                    else => {
+                        warn("unrecognized key scan code {}", key);
+                        return;
+                    },
+                }
+            }
             switch (key) {
                 27 => quit(),
                 ' ' => core_tetris.userDropCurPiece(t),
@@ -139,18 +152,15 @@ fn warn(comptime fmt: []const u8, args: ...) void {
 
 fn quit() void {
 //  os.exit(0);
+    warn("exit qemu - not yet implemented");
 }
 
 fn drawParticle(callback_user_pointer: *allowzero u64, t: *Tetris, p: Particle) void {
-//  const model = mat4x4_identity.translateByVec(p.pos).rotate(p.angle, p.axis).scale(p.scale_w, p.scale_h, 0.0);
-//
-//  const mvp = t.projection.mult(model);
-//  d.shaders.primitive.setUniformVec4(d.shaders.primitive_uniform_color, p.color);
-//  d.shaders.primitive.setUniformMat4x4(d.shaders.primitive_uniform_mvp, mvp);
-//  c.glBindBuffer(c.GL_ARRAY_BUFFER, d.static_geometry.triangle_2d_vertex_buffer);
-//  c.glEnableVertexAttribArray(@intCast(c.GLuint, d.shaders.primitive_attrib_position));
-//  c.glVertexAttribPointer(@intCast(c.GLuint, d.shaders.primitive_attrib_position), 3, c.GL_FLOAT, c.GL_FALSE, 0, null);
-//  c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, 3);
+    warn("drawParticle");
+    const model = mat4x4_identity.translateByVec(p.pos).rotate(p.angle, p.axis).scale(p.scale_w, p.scale_h, 0.0);
+
+    const mvp = t.projection.mult(model);
+//  fillRectMvp(callback_user_pointer, t, color, mvp);
 }
 
 fn drawText(callback_user_pointer: *allowzero u64, t: *Tetris, text: []const u8, left: i32, top: i32, size: f32) void {
@@ -188,10 +198,13 @@ fn colorComponentToU8(x: Vec4, index: usize) u32 {
 
 fn fillRectMvp(callback_user_pointer: *allowzero u64, t: *Tetris, color: Vec4, mvp: Mat4x4) void {
     block = mvp.mult(unit_2d_rectangle);
+    _ = ultibo.graphics_window_draw_block(window, at(0, 0), at(1, 0), at(0, 2), at(1, 2), encodeColor(color));
+}
+
+fn encodeColor(color: Vec4) u32 {
     var rgb: u32 = 0;
-    rgb = rgb << 8 | colorComponentToU8(color, 3);
-    rgb = rgb << 8 | colorComponentToU8(color, 0);
-    rgb = rgb << 8 | colorComponentToU8(color, 1);
-    rgb = rgb << 8 | colorComponentToU8(color, 2);
-    _ = ultibo.graphics_window_draw_block(window, at(0, 0), at(1, 0), at(0, 2), at(1, 2), rgb);
+    rgb = rgb << 8 | @floatToInt(u8, 255.0 * color.data[3] * color.data[0]);
+    rgb = rgb << 8 | @floatToInt(u8, 255.0 * color.data[3] * color.data[1]);
+    rgb = rgb << 8 | @floatToInt(u8, 255.0 * color.data[3] * color.data[2]);
+    return rgb;
 }

@@ -1,45 +1,47 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Builder = std.build.Builder;
+const LibExeObjStep = std.build.LibExeObjStep;
 const RunStep = std.build.RunStep;
+const Step = std.build.Step;
 
 pub fn build(b: *Builder) !void {
-    const zipFileName = try s(b, "{}-{}.zip", repoName, version);
-    defer b.allocator.free(zipFileName);
+    const zip_file_name = try s(b, "{}-{}.zip", repo_name, version);
+    defer b.allocator.free(zip_file_name);
 
-    const clean_command = try bash(b, "rm -rf lib/ release/ zig-cache/ errors.log {} *.o *.a *.elf *.img", zipFileName);
-    const clean = b.step("clean", "remove output files");
-    clean.dependOn(&clean_command.step);
+    const clean = try bash(b, "rm -rf lib/ release/ zig-cache/ ultibomainzig.h errors.log *.a *.elf *.img *.o *.zip");
+    namedTask(b, &clean.step, "clean", "remove output files");
 
-    const zigmain = b.addSystemCommand([][]const u8 {
-        "zig", "build-obj", "-target", "armv7-freestanding-gnueabihf",
-        "-isystem", "subtree/ultibohub/API/include",
-        "-isystem", "subtree/ultibohub/Userland",
-        "-isystem", "subtree/ultibohub/Userland/host_applications/ultibo/libs/bcm_host/include",
-        "-isystem", "subtree/ultibohub/Userland/interface",
-        "-isystem", "subtree/ultibohub/Userland/interface/vcos/ultibo",
-        "-isystem", "subtree/ultibohub/Userland/interface/vmcs_host/ultibo",
-        "-isystem", "subtree/ultibohub/Userland/middleware/dlloader",
-        "-isystem", "/usr/lib/gcc/arm-none-eabi",
-        "-isystem", "/usr/gcc-arm-none-eabi-8-2018-q4-major/arm-none-eabi/include",
-        "src/ultibomainzig.zig"
-    });
-    zigmain.step.dependOn(clean);
+    const arch = builtin.Arch{ .arm = builtin.Arch.Arm32.v7 };
+    const zigmain = b.addObject("ultibomainzig", "src/ultibomainzig.zig");
+    zigmain.setOutputDir("zig-cache");
+    zigmain.setTarget(arch, .freestanding, .gnueabihf);
+    zigmain.addIncludeDir("subtree/ultibohub/API/include");
+    zigmain.addIncludeDir("subtree/ultibohub/API/include");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland/host_applications/ultibo/libs/bcm_host/include");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland/interface");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland/interface/vcos/ultibo");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland/interface/vmcs_host/ultibo");
+    zigmain.addIncludeDir("subtree/ultibohub/Userland/middleware/dlloader");
+    zigmain.addIncludeDir("/usr/lib/gcc/arm-none-eabi");
+    zigmain.addIncludeDir("/usr/gcc-arm-none-eabi-8-2018-q4-major/arm-none-eabi/include");
+    zigmain.step.dependOn(&clean.step);
 
     const kernels = b.step("kernels", "build kernel images for all rpi models");
     const programName = "ultibomainpas";
     for (configs) |config, i| {
-        var ultibomain = try config.fpcCommands(b, zigmain, programName);
-        kernels.dependOn(&ultibomain.step);
-        if (i == 1) {
-//          b.default_step.dependOn(&ultibomain.step);
-        }
+        var ultibo_kernel = try config.buildKernel(b, zigmain, programName);
+        kernels.dependOn(&ultibo_kernel.step);
+//      if (i == 1) {
+//          b.default_step.dependOn(&ultibo_kernel.step);
+//      }
     }
 
-    const build_ultibo_qemu = b.step("ultibo-qemu", "build ultibo kernel image for qemu");
-    var ultibomain = try configs[0].fpcCommands(b, zigmain, programName);
-    build_ultibo_qemu.dependOn(&ultibomain.step);
+    const ultibo_qemu = try configs[0].buildKernel(b, zigmain, programName);
+    namedTask(b, &ultibo_qemu.step, "ultibo-qemu", "build ultibo kernel image for qemu");
 
-    const play_ultibo_qemu_command = b.addSystemCommand([][]const u8 {
+    const play_ultibo_qemu = b.addSystemCommand([][]const u8 {
         "qemu-system-arm",
         "-kernel", "kernel-qemuvpb.img",
         "-append", "\"NETWORK0_IP_CONFIG=STATIC NETWORK0_IP_ADDRESS=10.0.2.15 NETWORK0_IP_NETMASK=255.255.255.0 NETWORK0_IP_GATEWAY=10.0.2.2\"",
@@ -49,47 +51,34 @@ pub fn build(b: *Builder) !void {
         "-net", "nic", "-net", "user,hostfwd=tcp::5080-:80",
         "-serial", "stdio",
     });
-    play_ultibo_qemu_command.step.dependOn(build_ultibo_qemu);
+    play_ultibo_qemu.step.dependOn(&ultibo_qemu.step);
+    namedTask(b, &play_ultibo_qemu.step, "play-ultibo-qemu", "play ultibo qemu kernel");
 
-    const play_ultibo_qemu = b.step("play-ultibo-qemu", "play ultibo qemu kernel");
-    play_ultibo_qemu.dependOn(&play_ultibo_qemu_command.step);
+    const client = b.addExecutable("client", "src/client.zig");
+    client.step.dependOn(&clean.step);
+    client.linkSystemLibrary("c");
+//  namedTask(b, &client.step, "client", "build client that runs qemu");
 
-    const build_client_command = b.addSystemCommand([][]const u8 {
-        "zig", "build-exe", "--library", "c", "client.zig"
-    });
-    build_client_command.step.dependOn(clean);
+    const run_client = client.run();
+    run_client.step.dependOn(&client.step);
+    run_client.step.dependOn(&ultibo_qemu.step);
+//  namedTask(b, &run_client.step, "run-client", "run client");
 
-    const build_client = b.step("client", "build client");
-    build_client.dependOn(&build_client_command.step);
+    const release_message = try bash(b, "mkdir -p release/ && echo \"{} {}\" >> release/release-message.md && echo >> release/release-message.md && cat release-message.md >> release/release-message.md", repo_name, version);
 
-    const run_client_command = b.addSystemCommand([][]const u8 {
-        "./client",
-    });
-    run_client_command.step.dependOn(build_client);
-    run_client_command.step.dependOn(build_ultibo_qemu);
+    const zip = try bash(b, "mkdir -p release/ && cp -a *.img firmware/* config.txt cmdline.txt release/ && zip -jqr {} release/", zip_file_name);
+    zip.step.dependOn(kernels);
+    zip.step.dependOn(&release_message.step);
+    namedTask(b, &zip.step, "release", "create release zip file");
 
-    const run_client = b.step("run-client", "run client");
-    run_client.dependOn(&run_client_command.step);
-
-    const release_message_command = try bash(b, "mkdir -p release/ && echo \"{} {}\" >> release/release-message.md && echo >> release/release-message.md && cat release-message.md >> release/release-message.md", repoName, version);
-
-    const zip_command = try bash(b, "mkdir -p release/ && cp -a *.img firmware/* config.txt cmdline.txt release/ && zip -jqr {} release/", zipFileName);
-    zip_command.step.dependOn(kernels);
-    zip_command.step.dependOn(&release_message_command.step);
-
-    const create_release = b.step("create-release", "create release zip file");
-    create_release.dependOn(&zip_command.step);
-
-    const upload_command = try bash(b, "hub release create --draft -F release/release-message.md -a {} {} && echo && echo this is an unpublished draft release", zipFileName, version);
-    upload_command.step.dependOn(create_release);
-
-    const upload_release = b.step("upload-draft-release", "upload draft github release");
-    upload_release.dependOn(&upload_command.step);
+    const upload = try bash(b, "hub release create --draft -F release/release-message.md -a {} {} && echo && echo this is an unpublished draft release", zip_file_name, version);
+    upload.step.dependOn(&zip.step);
+    namedTask(b, &upload.step, "upload-draft-release", "upload draft github release");
 }
 
 const gcc_arm = "/usr/gcc-arm-none-eabi-8-2018-q4-major";
-const repoName = "zig-on-rpi-using-ultibo";
-const version = "v20190319";
+const repo_name = "tetris";
+const version = "v20190401";
 
 const Config = struct {
     conf: []const u8,
@@ -98,7 +87,7 @@ const Config = struct {
     arch2: []const u8,
     proc: []const u8,
     kernel: []const u8,
-    pub fn fpcCommands (it: Config, b: *Builder, zigmain: *RunStep, programName: []const u8) !*RunStep {
+    pub fn buildKernel (it: Config, b: *Builder, zigmain: *LibExeObjStep, programName: []const u8) !*RunStep {
         const home = try std.os.getEnvVarOwned(b.allocator, "HOME");
         defer b.allocator.free(home);
         const bin = try s(b, "{}/ultibo/core/fpc/bin", home);
@@ -160,4 +149,9 @@ fn bash(b: *Builder, comptime fmt: []const u8, args: ...) !*RunStep {
 
 fn s(b: *Builder, comptime fmt: []const u8, args: ...) ![]const u8 {
     return std.fmt.allocPrint(b.allocator, fmt, args);
+}
+
+fn namedTask(b: *Builder, step: *Step, name: []const u8, help: []const u8) void {
+    const new_step = b.step(name, help);
+    new_step.dependOn(step);
 }
