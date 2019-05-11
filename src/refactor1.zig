@@ -18,13 +18,54 @@ fn mprintf(comptime format: []const u8, args: ...) ![] const u8 {
     return allocPrint(pool, format, args);
 }
 
-fn append(list: *ArrayList([] const u8), s: []const u8) !void {
-    if (s.len == 0 and list.len >= 1 and list.at(list.len - 1).len == 0) {
-        return;
-    } else {
-        try list.append(try mem.dupe(pool, u8, s));
+const ZigFile = struct {
+    const Self = @This();
+
+    lines: ArrayList([] const u8),
+    map: AutoHashMap([]const u8, usize),
+    path: []const u8,
+
+    pub fn init(path: []const u8) Self {
+        var self: Self = undefined;
+        self.path = path;
+        self.lines = ArrayList([] const u8).init(pool);
+        self.map  = AutoHashMap([]const u8, usize).init(pool);
+        return self;
     }
-}
+
+    pub fn deinit(self: *Self) void {
+        self.lines.deinit();
+        self.map.deinit();
+    }
+
+    pub fn append(self: *Self, s: []const u8) !void {
+        if (s.len == 0 and self.lines.len >= 1 and self.lines.at(self.lines.len - 1).len == 0) {
+            return;
+        } else {
+            try self.lines.append(try mem.dupe(pool, u8, s));
+        }
+    }
+
+    pub fn removeTrailingBlanks(self: *Self) void {
+        if (self.lines.at(self.lines.len - 1).len == 0) {
+            _ = self.lines.pop();
+        }
+    }
+
+    pub fn setTopName(self: *Self, name: []const u8) !void {
+        _ = try self.map.put(name, self.lines.len - 1);
+    }
+
+    pub fn write(self: *Self) !void {
+        const f = try os.File.openWrite(self.path);
+        defer f.close();
+        var lines1 = self.lines.iterator();
+        while (lines1.next()) |line| {
+            try f.write(line);
+            try f.write("\n");
+        }
+    }
+};
 
 pub fn main() !void {
     const in = try std.io.readFileAlloc(pool, "src/" ++ in_name);
@@ -39,13 +80,10 @@ pub fn main() !void {
     try retain_names.put("keyCallback");
     try retain_names.put("main");
 
-    var out1_list = ArrayList([] const u8).init(pool);
-    var out2_list = ArrayList([] const u8).init(pool);
+    var out1 = ZigFile.init("src/" ++ out1_name);
+    var out2 = ZigFile.init("src/" ++ out2_name);
 
-    var out1_map = AutoHashMap([]const u8, usize).init(pool);
-    var out2_map = AutoHashMap([]const u8, usize).init(pool);
-
-    try append(&out1_list, try mprintf("use @import(\"{}\");", out2_name));
+    try out1.append(try mprintf("use @import(\"{}\");", out2_name));
 
     var lines = mem.separate(in, "\n");
     var retain = false;
@@ -68,24 +106,24 @@ pub fn main() !void {
                     if (first.id == std.zig.Token.Id.Keyword_fn) {
                         if (retain_names.exists(name)) {
                             retain = true;   
-                            try append(&out1_list, "");
+                            try out1.append("");
                         }
                     }
                 }
             }
         }
         if (retain) {
-            try append(&out1_list, line);
+            try out1.append(line);
             if (top_name) |name| {
-                _ = try out1_map.put(name, out1_list.len - 1);
+                try out1.setTopName(name);
             }
         } else {
             if (first.id == std.zig.Token.Id.Keyword_use) {
-                try append(&out2_list, try mprintf("pub {}", line));
+                try out2.append(try mprintf("pub {}", line));
             } else {
-                try append(&out2_list, line);
+                try out2.append(line);
                 if (top_name) |name| {
-                    _ = try out2_map.put(name, out2_list.len - 1);
+                    try out2.setTopName(name);
                 }
             }
         }
@@ -94,60 +132,35 @@ pub fn main() !void {
         }
     }
 
-    if (out1_list.at(out1_list.len - 1).len == 0) {
-        _ = out1_list.pop();
-    }
-
-    if (out2_list.at(out2_list.len - 1).len == 0) {
-        _ = out2_list.pop();
-    }
+    out1.removeTrailingBlanks();
+    out2.removeTrailingBlanks();
 
     const args = []const []const u8 { "zig", "build", build_out1_step_name };
     while (true) {
-        {
-            const out1 = try os.File.openWrite("src/" ++ out1_name);
-            defer out1.close();
-            var lines1 = out1_list.iterator();
-            while (lines1.next()) |line| {
-                try out1.write(line);
-                try out1.write("\n");
-            }
-        }
-
-        {
-            const out2 = try os.File.openWrite("src/" ++ out2_name);
-            defer out2.close();
-            var lines2 = out2_list.iterator();
-            while (lines2.next()) |line| {
-                try out2.write(line);
-                try out2.write("\n");
-            }
-        }
+        try out1.write();
+        try out2.write();
 
         var compile = try os.ChildProcess.exec(pool, args, null, null, 100 * 1024);
         var errors = mem.separate(compile.stderr, "\n");
         if (errors.next()) |error_line| {
             if (mem.indexOf(u8, error_line, "error:")) |_| {
                 if (mem.indexOf(u8, error_line, "use of undeclared identifier")) |_| {
-                    var list: ArrayList([] const u8) = undefined;
-                    var map: AutoHashMap([]const u8, usize) = undefined;
+                    var file: *ZigFile = undefined;
                     if (mem.startsWith(u8, error_line[mem.lastIndexOf(u8, error_line, "/").? + 1 ..], out1_name)) {
-                        list = out2_list;
-                        map = out2_map;
+                        file = &out2;
                         var quotes = mem.separate(error_line, "'");
                         _ = quotes.next();
                         var identifier = quotes.next().?;
-                        if (map.get(identifier)) |line_number| {
-//                          pool.free(list.at(line_number.value));
-                            list.set(line_number.value, try mprintf("pub {}", list.at(line_number.value)));
+                        if (file.map.get(identifier)) |line_number| {
+//                          pool.free(file.lines..at(line_number.value));
+                            file.lines.set(line_number.value, try mprintf("pub {}", file.lines.at(line_number.value)));
                             warn("undeclared {} found at {}\n", identifier, line_number.value);
                         } else {
                             warn("undeclared {} could not be found\n", identifier);
                             break;
                         }
                     } else {
-                        list = out1_list;
-                        map = out1_map;
+                        file = &out1;
                         warn("tbd - resolve - use {} - {}\n", out1_ref, error_line);
                         break;
                     }
